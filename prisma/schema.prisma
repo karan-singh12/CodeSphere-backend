@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String?
+  email         String         @unique
+  passwordHash  String
+  imageUrl      String         @default("")
+  credits       Int            @default(10)       // starts at free tier allocation
+  plan          String         @default("free")
+  conversations Conversation[]
+  workspaces    Workspace[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Workspace {
+  id        String         @id @default(cuid())
+  title     String?
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Json           @default("[]")
+  fileData  Json?
+  logs      InferenceLog[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([userId])
+}
+
+model Conversation {
+  id           String         @id @default(cuid())
+  title        String         @default("New Conversation")
+  sessionId    String         @unique @default(cuid())
+  provider     String         @default("openai")
+  model        String         @default("gpt-4.1")
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  messages     Message[]
+  logs         InferenceLog[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  role           String
+  content        String
+  createdAt      DateTime     @default(now())
+}
+
+model InferenceLog {
+  id               String        @id @default(cuid())
+  conversation     Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId   String?
+  workspace        Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId      String?
+  provider         String
+  model            String
+  latency          Int
+  promptTokens     Int
+  completionTokens Int
+  totalTokens      Int
+  status           String
+  inputPreview     String?
+  outputPreview    String?
+  errorMessage     String?
+  timestamp        DateTime      @default(now())
+}
+
