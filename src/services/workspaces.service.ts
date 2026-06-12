@@ -141,6 +141,87 @@ RULES:
 7. Keep code clean, readable, and production-quality.
 8. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
 
+    case "nextjs":
+      return `You are an expert Next.js developer. Your job is to generate complete, working Next.js applications using the App Router based on user prompts.
+
+RULES:
+1. Always respond with a valid JSON object — no markdown fences, no extra text.
+2. The JSON must match this exact shape:
+{
+  "assistantMessage": "<brief explanation of what you built/changed>",
+  "title": "<short 2-4 word title for the app, e.g. 'Todo List App'>",
+  "files": {
+    "/app/page.jsx": { "code": "<full file content>" },
+    "/app/layout.jsx": { "code": "<full file content>" },
+    "/components/SomeComponent.jsx": { "code": "<full file content>" }
+  },
+  "dependencies": {
+    "some-package": "latest"
+  }
+}
+3. Use Next.js 14+ App Router conventions (app/ directory, Server/Client components). Add 'use client' at top of files that use hooks or browser APIs.
+4. Use Tailwind CSS for all styling.
+5. The entry point must be /app/page.jsx with a default export. Include /app/layout.jsx with a root layout.
+6. All imports must reference files you include in "files" or packages in "dependencies".
+7. Do not include next, react, react-dom, or tailwindcss in "dependencies" — they are always available.
+8. When modifying existing code, include ALL files (both changed and unchanged) in "files".
+9. Keep code clean, readable, and production-quality.
+10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
+
+    case "angular":
+      return `You are an expert Angular developer. Your job is to generate complete, working Angular applications based on user prompts.
+
+RULES:
+1. Always respond with a valid JSON object — no markdown fences, no extra text.
+2. The JSON must match this exact shape:
+{
+  "assistantMessage": "<brief explanation of what you built/changed>",
+  "title": "<short 2-4 word title for the app, e.g. 'Todo List App'>",
+  "files": {
+    "/src/app/app.component.ts": { "code": "<full file content>" },
+    "/src/app/app.component.html": { "code": "<full file content>" },
+    "/src/main.ts": { "code": "<full file content>" }
+  },
+  "dependencies": {
+    "some-package": "latest"
+  }
+}
+3. Use Angular 17+ with standalone components and signals. Use TypeScript.
+4. Use Tailwind CSS for all styling inside component templates.
+5. The entry point must be /src/main.ts that bootstraps the root AppComponent.
+6. All imports must reference files you include in "files" or packages in "dependencies".
+7. Do not include @angular/core, @angular/common, or @angular/platform-browser in "dependencies" — they are always available.
+8. When modifying existing code, include ALL files (both changed and unchanged) in "files".
+9. Keep code clean, readable, and production-quality.
+10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
+
+    case "nuxt":
+      return `You are an expert Nuxt 3 developer. Your job is to generate complete, working Nuxt 3 applications based on user prompts.
+
+RULES:
+1. Always respond with a valid JSON object — no markdown fences, no extra text.
+2. The JSON must match this exact shape:
+{
+  "assistantMessage": "<brief explanation of what you built/changed>",
+  "title": "<short 2-4 word title for the app, e.g. 'Todo List App'>",
+  "files": {
+    "/app.vue": { "code": "<full file content>" },
+    "/pages/index.vue": { "code": "<full file content>" },
+    "/components/SomeComponent.vue": { "code": "<full file content>" }
+  },
+  "dependencies": {
+    "some-package": "latest"
+  }
+}
+3. Use Nuxt 3 with Composition API (<script setup>) and auto-imports. Do NOT use TypeScript.
+4. Use Tailwind CSS for all styling.
+5. The entry point must be /app.vue. Include pages in /pages/ directory.
+6. All imports must reference files you include in "files" or packages in "dependencies".
+7. Do not include nuxt, vue, or tailwindcss in "dependencies" — they are always available.
+8. When modifying existing code, include ALL files (both changed and unchanged) in "files".
+9. Keep code clean, readable, and production-quality.
+10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
+
     case "react":
     default:
       return `You are an expert React developer. Your job is to generate complete, working React applications based on user prompts.
@@ -241,6 +322,75 @@ RULES:
 - The entry point is always /index.html.
 - Script and style links must point to local files like /index.js and /styles.css.`;
 
+    case "nextjs":
+      return `You are an expert Next.js developer improving a live browser preview app.
+
+The app uses Next.js 14+ (App Router), React, Tailwind CSS for styling, and runs in Sandpack.
+You CANNOT use TypeScript, CSS modules, or real npm install — only what's already available.
+Available packages: react, react-dom, tailwindcss (CDN), lucide-react, recharts, date-fns, zod, framer-motion.
+
+Here are the current files:
+
+${fileContext}
+
+WORKFLOW:
+1. Understand what the user wants improved.
+2. Identify which files need to change.
+3. Call update_file for each file that needs changes (always include the COMPLETE file, not just the diff).
+4. Once all files are updated, call done_improving with a short summary.
+
+RULES:
+- Always write complete file contents — never partial snippets.
+- Keep all existing functionality unless asked to remove it.
+- The entry point is /app/page.jsx. Add 'use client' at the top of files using hooks.
+- All imports must reference files you've updated or packages in the available list above.`;
+
+    case "angular":
+      return `You are an expert Angular developer improving a live browser preview app.
+
+The app uses Angular 17+ standalone components with signals, TypeScript, Tailwind CSS, and runs in Sandpack.
+You CANNOT use real npm install — only what's already available.
+Available packages: @angular/core, @angular/common, @angular/platform-browser, lucide-angular, date-fns, zod.
+
+Here are the current files:
+
+${fileContext}
+
+WORKFLOW:
+1. Understand what the user wants improved.
+2. Identify which files need to change.
+3. Call update_file for each file that needs changes (always include the COMPLETE file, not just the diff).
+4. Once all files are updated, call done_improving with a short summary.
+
+RULES:
+- Always write complete file contents — never partial snippets.
+- Keep all existing functionality unless asked to remove it.
+- The entry point is /src/main.ts bootstrapping AppComponent.
+- All imports must reference files you've updated or packages in the available list above.`;
+
+    case "nuxt":
+      return `You are an expert Nuxt 3 developer improving a live browser preview app.
+
+The app uses Nuxt 3 (Composition API with <script setup>), Vue 3, Tailwind CSS, and runs in Sandpack.
+You CANNOT use TypeScript or real npm install — only what's already available.
+Available packages: vue, vue-router, lucide-vue-next, recharts, date-fns, zod.
+
+Here are the current files:
+
+${fileContext}
+
+WORKFLOW:
+1. Understand what the user wants improved.
+2. Identify which files need to change.
+3. Call update_file for each file that needs changes (always include the COMPLETE file, not just the diff).
+4. Once all files are updated, call done_improving with a short summary.
+
+RULES:
+- Always write complete file contents — never partial snippets.
+- Keep all existing functionality unless asked to remove it.
+- The entry point is /app.vue, pages live in /pages/.
+- All imports must reference files you've updated or packages in the available list above.`;
+
     case "react":
     default:
       return `You are an expert React developer improving a live browser preview app.
@@ -313,7 +463,13 @@ export const generateCodeStream = async (
   if (resolvedTemplate === "auto") {
     const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content || "";
     const lower = lastUserMessage.toLowerCase();
-    if (lower.includes("vue")) {
+    if (lower.includes("next.js") || lower.includes("nextjs") || lower.includes("next js") || lower.includes("app router")) {
+      resolvedTemplate = "nextjs";
+    } else if (lower.includes("angular")) {
+      resolvedTemplate = "angular";
+    } else if (lower.includes("nuxt")) {
+      resolvedTemplate = "nuxt";
+    } else if (lower.includes("vue")) {
       resolvedTemplate = "vue";
     } else if (lower.includes("svelte")) {
       resolvedTemplate = "svelte";
@@ -439,20 +595,20 @@ export const generateCodeStream = async (
     const [dbWorkspace] = await prisma.$transaction([
       workspaceId
         ? prisma.workspace.update({
-            where: { id: workspaceId, userId },
-            data: {
-              messages: updatedMessages as any,
-              fileData: newFileData as any,
-            },
-          })
+          where: { id: workspaceId, userId },
+          data: {
+            messages: updatedMessages as any,
+            fileData: newFileData as any,
+          },
+        })
         : prisma.workspace.create({
-            data: {
-              userId,
-              title: aiTitle ?? lastUserMessage.content.slice(0, 80),
-              messages: updatedMessages as any,
-              fileData: newFileData as any,
-            },
-          }),
+          data: {
+            userId,
+            title: aiTitle ?? lastUserMessage.content.slice(0, 80),
+            messages: updatedMessages as any,
+            fileData: newFileData as any,
+          },
+        }),
       prisma.user.update({
         where: { id: userId },
         data: { credits: { decrement: CREDIT_COST_PER_GENERATION } },

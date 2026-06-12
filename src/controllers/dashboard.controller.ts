@@ -2,51 +2,96 @@ import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import * as apiRes from '../utils/apiResponse';
 
+/**
+ * Build the InferenceLog filter scoped to the authenticated user.
+ * If a workspaceId query param is provided AND that workspace belongs to
+ * the user, the filter is narrowed to just that workspace.
+ */
+function buildFilter(userId: string, workspaceId?: string) {
+  if (workspaceId) {
+    // Scoped to a single workspace — ownership check done via workspace.userId
+    return {
+      workspace: { id: workspaceId, userId },
+    };
+  }
+  // All logs for this user (across workspaces + conversations)
+  return {
+    OR: [
+      { workspace: { userId } },
+      { conversation: { userId } },
+    ],
+  };
+}
+
 export const summary = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id || (req as any).user?.userId;
-    const filter = {
-      OR: [
-        { workspace: { userId } },
-        { conversation: { userId } }
-      ]
-    };
+    const workspaceId = req.query.workspaceId as string | undefined;
+    const filter = buildFilter(userId, workspaceId);
 
     const totalRequests = await prisma.inferenceLog.count({ where: filter });
-    const totalTokens = (await prisma.inferenceLog.aggregate({
-      where: filter,
-      _sum: { totalTokens: true }
-    }))._sum.totalTokens || 0;
+    const totalTokens =
+      (
+        await prisma.inferenceLog.aggregate({
+          where: filter,
+          _sum: { totalTokens: true },
+        })
+      )._sum.totalTokens || 0;
     const avg = await prisma.inferenceLog.aggregate({
       where: filter,
-      _avg: { latency: true }
+      _avg: { latency: true },
     });
     const averageLatency = Math.round(avg._avg.latency || 0);
     const errors = await prisma.inferenceLog.count({
-      where: { ...filter, status: 'error' }
+      where: { ...filter, status: 'error' },
     });
     const errorRate = totalRequests === 0 ? 0 : errors / totalRequests;
 
-    return apiRes.successResponse(res, 'Dashboard summary', { totalRequests, totalTokens, averageLatency, errorRate });
+    return apiRes.successResponse(res, 'Dashboard summary', {
+      totalRequests,
+      totalTokens,
+      averageLatency,
+      errorRate,
+      workspaceId: workspaceId ?? null,
+    });
   } catch (error: unknown) {
-    return apiRes.errorResponse(res, error instanceof Error ? error.message : 'Could not fetch summary', 400);
+    return apiRes.errorResponse(
+      res,
+      error instanceof Error ? error.message : 'Could not fetch summary',
+      400
+    );
   }
 };
 
 export const dailyRequests = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id || (req as any).user?.userId;
+    const workspaceId = req.query.workspaceId as string | undefined;
 
-    const rows = await prisma.$queryRaw<Array<{ day: string; count: any }>>`
-      SELECT to_char(il.timestamp::date, 'YYYY-MM-DD') as day, COUNT(il.id) as count
-      FROM "InferenceLog" il
-      LEFT JOIN "Workspace" w ON il."workspaceId" = w.id
-      LEFT JOIN "Conversation" c ON il."conversationId" = c.id
-      WHERE w."userId" = ${userId} OR c."userId" = ${userId}
-      GROUP BY day
-      ORDER BY day DESC
-      LIMIT 30
-    `;
+    let rows: Array<{ day: string; count: any }>;
+
+    if (workspaceId) {
+      rows = await prisma.$queryRaw<Array<{ day: string; count: any }>>`
+        SELECT to_char(il.timestamp::date, 'YYYY-MM-DD') as day, COUNT(il.id) as count
+        FROM "InferenceLog" il
+        INNER JOIN "Workspace" w ON il."workspaceId" = w.id
+        WHERE w.id = ${workspaceId} AND w."userId" = ${userId}
+        GROUP BY day
+        ORDER BY day DESC
+        LIMIT 30
+      `;
+    } else {
+      rows = await prisma.$queryRaw<Array<{ day: string; count: any }>>`
+        SELECT to_char(il.timestamp::date, 'YYYY-MM-DD') as day, COUNT(il.id) as count
+        FROM "InferenceLog" il
+        LEFT JOIN "Workspace" w ON il."workspaceId" = w.id
+        LEFT JOIN "Conversation" c ON il."conversationId" = c.id
+        WHERE w."userId" = ${userId} OR c."userId" = ${userId}
+        GROUP BY day
+        ORDER BY day DESC
+        LIMIT 30
+      `;
+    }
 
     const serializedRows = rows.map((row) => ({
       ...row,
@@ -55,47 +100,70 @@ export const dailyRequests = async (req: Request, res: Response) => {
 
     return apiRes.successResponse(res, 'Daily requests', serializedRows);
   } catch (error: unknown) {
-    return apiRes.errorResponse(res, error instanceof Error ? error.message : 'Could not fetch daily requests', 400);
+    return apiRes.errorResponse(
+      res,
+      error instanceof Error ? error.message : 'Could not fetch daily requests',
+      400
+    );
   }
 };
 
 export const providerUsage = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id || (req as any).user?.userId;
-    const filter = {
-      OR: [
-        { workspace: { userId } },
-        { conversation: { userId } }
-      ]
-    };
+    const workspaceId = req.query.workspaceId as string | undefined;
+    const filter = buildFilter(userId, workspaceId);
 
     const rows = await prisma.inferenceLog.groupBy({
       where: filter,
       by: ['provider'],
       _sum: { totalTokens: true },
-      _count: { provider: true }
+      _count: { provider: true },
     });
-    const data = rows.map((r) => ({ provider: r.provider, totalTokens: r._sum.totalTokens ?? 0, requests: r._count.provider }));
+    const data = rows.map((r) => ({
+      provider: r.provider,
+      totalTokens: r._sum.totalTokens ?? 0,
+      requests: r._count.provider,
+    }));
     return apiRes.successResponse(res, 'Provider usage', data);
   } catch (error: unknown) {
-    return apiRes.errorResponse(res, error instanceof Error ? error.message : 'Could not fetch provider usage', 400);
+    return apiRes.errorResponse(
+      res,
+      error instanceof Error ? error.message : 'Could not fetch provider usage',
+      400
+    );
   }
 };
 
 export const latencyTrends = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id || (req as any).user?.userId;
+    const workspaceId = req.query.workspaceId as string | undefined;
 
-    const rows = await prisma.$queryRaw<Array<{ day: string; avg_latency: any }>>`
-      SELECT to_char(il.timestamp::date, 'YYYY-MM-DD') as day, ROUND(AVG(il.latency)) as avg_latency
-      FROM "InferenceLog" il
-      LEFT JOIN "Workspace" w ON il."workspaceId" = w.id
-      LEFT JOIN "Conversation" c ON il."conversationId" = c.id
-      WHERE w."userId" = ${userId} OR c."userId" = ${userId}
-      GROUP BY day
-      ORDER BY day DESC
-      LIMIT 30
-    `;
+    let rows: Array<{ day: string; avg_latency: any }>;
+
+    if (workspaceId) {
+      rows = await prisma.$queryRaw<Array<{ day: string; avg_latency: any }>>`
+        SELECT to_char(il.timestamp::date, 'YYYY-MM-DD') as day, ROUND(AVG(il.latency)) as avg_latency
+        FROM "InferenceLog" il
+        INNER JOIN "Workspace" w ON il."workspaceId" = w.id
+        WHERE w.id = ${workspaceId} AND w."userId" = ${userId}
+        GROUP BY day
+        ORDER BY day DESC
+        LIMIT 30
+      `;
+    } else {
+      rows = await prisma.$queryRaw<Array<{ day: string; avg_latency: any }>>`
+        SELECT to_char(il.timestamp::date, 'YYYY-MM-DD') as day, ROUND(AVG(il.latency)) as avg_latency
+        FROM "InferenceLog" il
+        LEFT JOIN "Workspace" w ON il."workspaceId" = w.id
+        LEFT JOIN "Conversation" c ON il."conversationId" = c.id
+        WHERE w."userId" = ${userId} OR c."userId" = ${userId}
+        GROUP BY day
+        ORDER BY day DESC
+        LIMIT 30
+      `;
+    }
 
     const serializedRows = rows.map((row) => ({
       ...row,
@@ -104,19 +172,19 @@ export const latencyTrends = async (req: Request, res: Response) => {
 
     return apiRes.successResponse(res, 'Latency trends', serializedRows);
   } catch (error: unknown) {
-    return apiRes.errorResponse(res, error instanceof Error ? error.message : 'Could not fetch latency trends', 400);
+    return apiRes.errorResponse(
+      res,
+      error instanceof Error ? error.message : 'Could not fetch latency trends',
+      400
+    );
   }
 };
 
 export const anomalies = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id || (req as any).user?.userId;
-    const filter = {
-      OR: [
-        { workspace: { userId } },
-        { conversation: { userId } }
-      ]
-    };
+    const workspaceId = req.query.workspaceId as string | undefined;
+    const filter = buildFilter(userId, workspaceId);
 
     const logs = await prisma.inferenceLog.findMany({
       where: filter,
@@ -127,7 +195,7 @@ export const anomalies = async (req: Request, res: Response) => {
     const anomaliesList = logs
       .map((log) => {
         const list: any[] = [];
-        
+
         if (log.status === 'error') {
           list.push({
             id: `${log.id}-error`,
@@ -143,7 +211,7 @@ export const anomalies = async (req: Request, res: Response) => {
             provider: log.provider,
           });
         }
-        
+
         if (log.latency > 3000) {
           list.push({
             id: `${log.id}-latency`,
@@ -159,7 +227,7 @@ export const anomalies = async (req: Request, res: Response) => {
             provider: log.provider,
           });
         }
-        
+
         if (log.totalTokens > 3500) {
           list.push({
             id: `${log.id}-tokens`,
@@ -183,8 +251,8 @@ export const anomalies = async (req: Request, res: Response) => {
     const criticalCount = anomaliesList.filter((a) => a.severity === 'critical').length;
     const highCount = anomaliesList.filter((a) => a.severity === 'high').length;
     const mediumCount = anomaliesList.filter((a) => a.severity === 'medium').length;
-    
-    const totalDeduction = (criticalCount * 15) + (highCount * 8) + (mediumCount * 3);
+
+    const totalDeduction = criticalCount * 15 + highCount * 8 + mediumCount * 3;
     const healthScore = Math.max(0, 100 - totalDeduction);
 
     return apiRes.successResponse(res, 'Dashboard anomalies', {
@@ -194,10 +262,36 @@ export const anomalies = async (req: Request, res: Response) => {
         critical: criticalCount,
         high: highCount,
         medium: mediumCount,
-        healthScore
-      }
+        healthScore,
+      },
     });
   } catch (error: unknown) {
-    return apiRes.errorResponse(res, error instanceof Error ? error.message : 'Could not fetch anomalies', 400);
+    return apiRes.errorResponse(
+      res,
+      error instanceof Error ? error.message : 'Could not fetch anomalies',
+      400
+    );
+  }
+};
+
+/**
+ * Returns the list of workspaces for the current user — used by the
+ * monitoring page to populate the project filter dropdown.
+ */
+export const workspaceList = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id || (req as any).user?.userId;
+    const workspaces = await prisma.workspace.findMany({
+      where: { userId },
+      select: { id: true, title: true, createdAt: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return apiRes.successResponse(res, 'Workspace list', workspaces);
+  } catch (error: unknown) {
+    return apiRes.errorResponse(
+      res,
+      error instanceof Error ? error.message : 'Could not fetch workspaces',
+      400
+    );
   }
 };

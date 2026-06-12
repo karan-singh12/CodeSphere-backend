@@ -8,5 +8,7 @@ router.get('/daily-requests', dashboardController.dailyRequests);
 router.get('/provider-usage', dashboardController.providerUsage);
 router.get('/latency-trends', dashboardController.latencyTrends);
 router.get('/anomalies', dashboardController.anomalies);
+// Returns the workspace list for the project filter on the monitoring page
+router.get('/workspaces', dashboardController.workspaceList);
 
 export default router;

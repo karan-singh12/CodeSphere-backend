@@ -1,6 +1,6 @@
 #  — Backend API
 
-This is the backend API server for **CodeSphere** (also known as Forge), a full-stack AI-powered React application builder (similar to Cursor, bolt.new, and Lovable) integrated with real-time observability telemetry and inference analytics.
+This is the backend API server for **CodeSphere**, a full-stack AI-powered application builder (similar to Cursor, bolt.new, and Lovable) integrated with real-time observability telemetry and inference analytics.
 
 ---
 
