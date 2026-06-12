@@ -63,7 +63,87 @@ function trimHistory(messages: Message[]): Message[] {
   return [messages[0], ...messages.slice(-8)];
 }
 
-const SYSTEM_PROMPT = `You are an expert React developer. Your job is to generate complete, working React applications based on user prompts.
+function getSystemPrompt(template: string = "react"): string {
+  switch (template) {
+    case "vue":
+      return `You are an expert Vue 3 developer. Your job is to generate complete, working Vue 3 applications using Single File Components (.vue) and Composition API (<script setup>) based on user prompts.
+
+RULES:
+1. Always respond with a valid JSON object — no markdown fences, no extra text.
+2. The JSON must match this exact shape:
+{
+  "assistantMessage": "<brief explanation of what you built/changed>",
+  "title": "<short 2-4 word title for the app, e.g. 'Todo List App'>",
+  "files": {
+    "/src/App.vue": { "code": "<full file content>" },
+    "/src/components/SomeComponent.vue": { "code": "<full file content>" },
+    "/src/main.js": { "code": "import { createApp } from 'vue';\nimport App from './App.vue';\ncreateApp(App).mount('#app');" }
+  },
+  "dependencies": {
+    "some-package": "latest"
+  }
+}
+3. Use Vue 3 (Composition API with <script setup> syntax). Do NOT use TypeScript.
+4. Use Tailwind CSS for all styling. Rely on global Tailwind classes, do not use CSS modules or scoped styles unless necessary.
+5. The entry point must always be /src/App.vue, and there must be a /src/main.js that registers and mounts it.
+6. All imports must reference files you include in "files" or packages in "dependencies".
+7. Do not include vue, vite, or tailwindcss in "dependencies" — they are automatically configured.
+8. When modifying existing code, include ALL files (both changed and unchanged) in "files".
+9. Keep code clean, readable, and production-quality.
+10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
+
+    case "svelte":
+      return `You are an expert Svelte developer. Your job is to generate complete, working Svelte applications based on user prompts.
+
+RULES:
+1. Always respond with a valid JSON object — no markdown fences, no extra text.
+2. The JSON must match this exact shape:
+{
+  "assistantMessage": "<brief explanation of what you built/changed>",
+  "title": "<short 2-4 word title for the app, e.g. 'Todo List App'>",
+  "files": {
+    "/App.svelte": { "code": "<full file content>" },
+    "/components/SomeComponent.svelte": { "code": "<full file content>" }
+  },
+  "dependencies": {
+    "some-package": "latest"
+  }
+}
+3. Use Svelte syntax. Do NOT use TypeScript.
+4. Use Tailwind CSS for all styling.
+5. The entry point must always be /App.svelte.
+6. All imports must reference files you include in "files" or packages in "dependencies".
+7. Do not include svelte, vite, or tailwindcss in "dependencies".
+8. When modifying existing code, include ALL files (both changed and unchanged) in "files".
+9. Keep code clean, readable, and production-quality.
+10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
+
+    case "static":
+      return `You are an expert Frontend web developer. Your job is to generate complete, working Static HTML/JS/CSS applications based on user prompts.
+
+RULES:
+1. Always respond with a valid JSON object — no markdown fences, no extra text.
+2. The JSON must match this exact shape:
+{
+  "assistantMessage": "<brief explanation of what you built/changed>",
+  "title": "<short 2-4 word title for the app, e.g. 'Todo List App'>",
+  "files": {
+    "/index.html": { "code": "<full file content>" },
+    "/index.js": { "code": "<full file content>" },
+    "/styles.css": { "code": "<full file content>" }
+  },
+  "dependencies": {}
+}
+3. Use vanilla HTML5, CSS3, and standard ES6+ JavaScript. Do NOT use React, Vue, Svelte, or TypeScript.
+4. You may use Tailwind CSS by importing its CDN script (<script src="https://cdn.tailwindcss.com"></script>) in the head of /index.html.
+5. The entry point must always be /index.html. Include any script tags referencing /index.js or style links to /styles.css.
+6. When modifying existing code, include ALL files (both changed and unchanged) in "files".
+7. Keep code clean, readable, and production-quality.
+8. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
+
+    case "react":
+    default:
+      return `You are an expert React developer. Your job is to generate complete, working React applications based on user prompts.
 
 RULES:
 1. Always respond with a valid JSON object — no markdown fences, no extra text.
@@ -87,6 +167,105 @@ RULES:
 8. When modifying existing code, include ALL files (both changed and unchanged) in "files".
 9. Keep code clean, readable, and production-quality.
 10. If the user attaches an image, use it as a design reference and match the layout/style as closely as possible.`;
+  }
+}
+
+function getAgentSystemPrompt(template: string, fileContext: string): string {
+  switch (template) {
+    case "vue":
+      return `You are an expert Vue 3 developer improving a live browser preview app.
+
+The app uses Vue 3 (Composition API with <script setup>), Tailwind CSS for styling, and runs in Sandpack.
+You CANNOT use TypeScript, scoped/CSS modules, or real npm install — only what's already available.
+Available packages: vue, vue-router, lucide-react, recharts, date-fns, zod, axios.
+
+Here are the current files:
+
+${fileContext}
+
+WORKFLOW:
+1. Understand what the user wants improved.
+2. Identify which files need to change.
+3. Call update_file for each file that needs changes (always include the COMPLETE file, not just the diff).
+4. Once all files are updated, call done_improving with a short summary.
+
+RULES:
+- Always write complete file contents — never partial snippets.
+- Keep all existing functionality unless asked to remove it.
+- The entry point is always /src/App.vue, and you must have /src/main.js to mount it.
+- All imports must reference files you've updated or packages in the available list above.`;
+
+    case "svelte":
+      return `You are an expert Svelte developer improving a live browser preview app.
+
+The app uses Svelte, Tailwind CSS for styling, and runs in Sandpack.
+You CANNOT use TypeScript or real npm install — only what's already available.
+Available packages: svelte, lucide-react, recharts, date-fns, zod, axios.
+
+Here are the current files:
+
+${fileContext}
+
+WORKFLOW:
+1. Understand what the user wants improved.
+2. Identify which files need to change.
+3. Call update_file for each file that needs changes (always include the COMPLETE file, not just the diff).
+4. Once all files are updated, call done_improving with a short summary.
+
+RULES:
+- Always write complete file contents — never partial snippets.
+- Keep all existing functionality unless asked to remove it.
+- The entry point is always /App.svelte.
+- All imports must reference files you've updated or packages in the available list above.`;
+
+    case "static":
+      return `You are an expert Frontend developer improving a live browser preview app.
+
+The app uses static HTML, JavaScript, and CSS, styled with Tailwind CSS (CDN), running in Sandpack.
+You CANNOT use React, Vue, Svelte, TypeScript, or real npm install.
+Available external libraries can be loaded via standard script tags (like Tailwind CSS CDN).
+
+Here are the current files:
+
+${fileContext}
+
+WORKFLOW:
+1. Understand what the user wants improved.
+2. Identify which files need to change.
+3. Call update_file for each file that needs changes (always include the COMPLETE file, not just the diff).
+4. Once all files are updated, call done_improving with a short summary.
+
+RULES:
+- Always write complete file contents — never partial snippets.
+- Keep all existing functionality unless asked to remove it.
+- The entry point is always /index.html.
+- Script and style links must point to local files like /index.js and /styles.css.`;
+
+    case "react":
+    default:
+      return `You are an expert React developer improving a live browser preview app.
+
+The app uses React (functional components), Tailwind CSS for styling, and runs in Sandpack.
+You CANNOT use TypeScript, CSS modules, or real npm install — only what's already available.
+Available packages: react, react-dom, tailwindcss (CDN), lucide-react, recharts, react-router-dom, framer-motion, date-fns, zod, react-hook-form.
+
+Here are the current files:
+
+${fileContext}
+
+WORKFLOW:
+1. Understand what the user wants improved.
+2. Identify which files need to change.
+3. Call update_file_tool for each file that needs changes (always include the COMPLETE file, not just the diff).
+4. Once all files are updated, call done_improving with a short summary.
+
+RULES:
+- Always write complete file contents — never partial snippets.
+- Keep all existing functionality unless asked to remove it.
+- The entry point is always /App.js with a default export.
+- All imports must reference files you've updated or packages in the available list above.`;
+  }
+}
 
 function buildContents(messages: Message[], fileData: FileData | null) {
   const trimmed = trimHistory(messages);
@@ -122,13 +301,28 @@ export interface GenerateCodeStreamOptions {
   workspaceId: string | null;
   messages: Message[];
   fileData: FileData | null;
+  template?: string;
 }
 
 export const generateCodeStream = async (
   options: GenerateCodeStreamOptions,
   res: Response
 ) => {
-  const { userId, workspaceId, messages, fileData } = options;
+  const { userId, workspaceId, messages, fileData, template } = options;
+  let resolvedTemplate = template || fileData?.template || "react";
+  if (resolvedTemplate === "auto") {
+    const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content || "";
+    const lower = lastUserMessage.toLowerCase();
+    if (lower.includes("vue")) {
+      resolvedTemplate = "vue";
+    } else if (lower.includes("svelte")) {
+      resolvedTemplate = "svelte";
+    } else if (lower.includes("html") || lower.includes("static") || lower.includes("vanilla") || lower.includes("css") || lower.includes("javascript")) {
+      resolvedTemplate = "static";
+    } else {
+      resolvedTemplate = "react";
+    }
+  }
 
   await loadAIModules();
 
@@ -165,7 +359,7 @@ export const generateCodeStream = async (
       model: "gemini-3.5-flash",
       contents,
       config: {
-        systemInstruction: SYSTEM_PROMPT,
+        systemInstruction: getSystemPrompt(resolvedTemplate),
         temperature: 0.7,
         responseMimeType: "application/json",
         thinkingConfig: {
@@ -231,6 +425,7 @@ export const generateCodeStream = async (
       files,
       dependencies: validatedDeps,
       title: aiTitle,
+      template: resolvedTemplate,
     };
 
     res.write(sseEvent("status", { message: "Saving…" }));
@@ -365,11 +560,13 @@ export const improveCodeStream = async (
   let finalSummary = "";
   let agentOutputText = "";
 
+  const template = fileData.template || "react";
+
   const updateFileTool = createToolFn({
     name: "update_file",
-    description: "Update or rewrite a file in the React sandbox. Call once per file you need to change.",
+    description: `Update or rewrite a file in the ${template} sandbox. Call once per file you need to change.`,
     inputSchema: z.object({
-      path: z.string().describe("File path exactly as it appears, e.g. /App.js"),
+      path: z.string().describe("File path exactly as it appears, e.g. /App.js, /src/App.vue, or /index.html"),
       code: z.string().describe("Complete new contents of the file"),
       reason: z.string().describe("One sentence explaining what you changed and why"),
     }),
@@ -402,27 +599,7 @@ export const improveCodeStream = async (
     modelId: "gemini-3.5-flash",
     apiKey: process.env.GEMINI_API_KEY!,
     maxIterations: 8,
-    systemPrompt: `You are an expert React developer improving a live browser preview app.
-
-The app uses React (functional components), Tailwind CSS for styling, and runs in Sandpack.
-You CANNOT use TypeScript, CSS modules, or real npm install — only what's already available.
-Available packages: react, react-dom, tailwindcss (CDN), lucide-react, recharts, react-router-dom, framer-motion, date-fns, zod, react-hook-form.
-
-Here are the current files:
-
-${fileContext}
-
-WORKFLOW:
-1. Understand what the user wants improved.
-2. Identify which files need to change.
-3. Call update_file for each file that needs changes (always include the COMPLETE file, not just the diff).
-4. Once all files are updated, call done_improving with a short summary.
-
-RULES:
-- Always write complete file contents — never partial snippets.
-- Keep all existing functionality unless asked to remove it.
-- The entry point is always /App.js with a default export.
-- All imports must reference files you've updated or packages in the available list above.`,
+    systemPrompt: getAgentSystemPrompt(template, fileContext),
     tools: [updateFileTool, doneImprovingTool],
     toolPolicies: {
       update_file: { autoApprove: true },
@@ -459,6 +636,7 @@ RULES:
       files: patchedFiles,
       dependencies: fileData.dependencies,
       title: fileData.title,
+      template,
     };
 
     await prisma.$transaction([

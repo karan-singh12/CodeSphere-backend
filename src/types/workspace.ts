@@ -10,6 +10,7 @@ export interface FileData {
   files: Record<string, { code: string }>;
   dependencies: Record<string, string>;
   title?: string;
+  template?: string;
 }
 
 export interface WorkspaceData {

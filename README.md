@@ -11,11 +11,13 @@ This is the backend API server for **CodeSphere** (also known as Forge), a full-
 - **Autonomous Refinement Agent**: Incorporates a `@cline/sdk` Agent that self-corrects code, edits sandbox files, and applies updates incrementally.
 - **Sandboxed Workspace Persistence**: Manages and persists workspace code state, dependencies list, and complete chat prompt histories in PostgreSQL via Prisma.
 - **Credit-Based Usage**: Built-in credit billing check (Pro plan permissions check, Starter/Free credits allocations).
+- **Prompt Technical Specifications Builder**: Receives technical specs (Frontend/Backend frameworks, theme vibe, app architectures, state management patterns, and core features) and dynamically formats them into a strict prompt instructions block.
 
-### 📊 Observability & Telemetry Analytics
-- **Inference Log Tracking**: Records model latency, token costs, input prompts, and outputs for all generated code.
-- **Analytics Dashboard**: Aggregates latency trends, daily requests volume, and cost analyses across multiple LLM providers.
-- **Anomalies Detection**: Detects latency spikes, error rate outliers, and large token consumption anomalously.
+### 📊 Secure Observability & Telemetry Analytics
+- **Inference Log Tracking**: Records model latency, token costs, input prompts, outputs, and status details for every AI prompt execution.
+- **Strict Account-Based Analytics Dashboard**: Aggregates telemetry stats (total requests, token volume, average response times, and error rate metrics) dynamically filtered by the logged-in user's account ID (based on workspaces and conversations owned by them).
+- **Custom Time-Series Trend Aggregations**: Supports PostgreSQL aggregate queries (`to_char` date conversions) for daily inference counts and latency averages restricted to the user's workspace.
+- **Multi-Tenant Data Isolation**: Direct join relationship queries prevent database cross-read and keep data fully secure and isolated at the controller layer.
 
 ---
 

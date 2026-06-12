@@ -2,13 +2,29 @@ import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import * as apiRes from '../utils/apiResponse';
 
-export const summary = async (_req: Request, res: Response) => {
+export const summary = async (req: Request, res: Response) => {
   try {
-    const totalRequests = await prisma.inferenceLog.count();
-    const totalTokens = (await prisma.inferenceLog.aggregate({ _sum: { totalTokens: true } }))._sum.totalTokens || 0;
-    const avg = await prisma.inferenceLog.aggregate({ _avg: { latency: true } });
+    const userId = (req as any).user?.id || (req as any).user?.userId;
+    const filter = {
+      OR: [
+        { workspace: { userId } },
+        { conversation: { userId } }
+      ]
+    };
+
+    const totalRequests = await prisma.inferenceLog.count({ where: filter });
+    const totalTokens = (await prisma.inferenceLog.aggregate({
+      where: filter,
+      _sum: { totalTokens: true }
+    }))._sum.totalTokens || 0;
+    const avg = await prisma.inferenceLog.aggregate({
+      where: filter,
+      _avg: { latency: true }
+    });
     const averageLatency = Math.round(avg._avg.latency || 0);
-    const errors = await prisma.inferenceLog.count({ where: { status: 'error' } });
+    const errors = await prisma.inferenceLog.count({
+      where: { ...filter, status: 'error' }
+    });
     const errorRate = totalRequests === 0 ? 0 : errors / totalRequests;
 
     return apiRes.successResponse(res, 'Dashboard summary', { totalRequests, totalTokens, averageLatency, errorRate });
@@ -17,11 +33,16 @@ export const summary = async (_req: Request, res: Response) => {
   }
 };
 
-export const dailyRequests = async (_req: Request, res: Response) => {
+export const dailyRequests = async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).user?.id || (req as any).user?.userId;
+
     const rows = await prisma.$queryRaw<Array<{ day: string; count: any }>>`
-      SELECT to_char(timestamp::date, 'YYYY-MM-DD') as day, COUNT(*) as count
-      FROM "InferenceLog"
+      SELECT to_char(il.timestamp::date, 'YYYY-MM-DD') as day, COUNT(il.id) as count
+      FROM "InferenceLog" il
+      LEFT JOIN "Workspace" w ON il."workspaceId" = w.id
+      LEFT JOIN "Conversation" c ON il."conversationId" = c.id
+      WHERE w."userId" = ${userId} OR c."userId" = ${userId}
       GROUP BY day
       ORDER BY day DESC
       LIMIT 30
@@ -38,9 +59,22 @@ export const dailyRequests = async (_req: Request, res: Response) => {
   }
 };
 
-export const providerUsage = async (_req: Request, res: Response) => {
+export const providerUsage = async (req: Request, res: Response) => {
   try {
-    const rows = await prisma.inferenceLog.groupBy({ by: ['provider'], _sum: { totalTokens: true }, _count: { provider: true } });
+    const userId = (req as any).user?.id || (req as any).user?.userId;
+    const filter = {
+      OR: [
+        { workspace: { userId } },
+        { conversation: { userId } }
+      ]
+    };
+
+    const rows = await prisma.inferenceLog.groupBy({
+      where: filter,
+      by: ['provider'],
+      _sum: { totalTokens: true },
+      _count: { provider: true }
+    });
     const data = rows.map((r) => ({ provider: r.provider, totalTokens: r._sum.totalTokens ?? 0, requests: r._count.provider }));
     return apiRes.successResponse(res, 'Provider usage', data);
   } catch (error: unknown) {
@@ -48,11 +82,16 @@ export const providerUsage = async (_req: Request, res: Response) => {
   }
 };
 
-export const latencyTrends = async (_req: Request, res: Response) => {
+export const latencyTrends = async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).user?.id || (req as any).user?.userId;
+
     const rows = await prisma.$queryRaw<Array<{ day: string; avg_latency: any }>>`
-      SELECT to_char(timestamp::date, 'YYYY-MM-DD') as day, ROUND(AVG(latency)) as avg_latency
-      FROM "InferenceLog"
+      SELECT to_char(il.timestamp::date, 'YYYY-MM-DD') as day, ROUND(AVG(il.latency)) as avg_latency
+      FROM "InferenceLog" il
+      LEFT JOIN "Workspace" w ON il."workspaceId" = w.id
+      LEFT JOIN "Conversation" c ON il."conversationId" = c.id
+      WHERE w."userId" = ${userId} OR c."userId" = ${userId}
       GROUP BY day
       ORDER BY day DESC
       LIMIT 30
@@ -69,9 +108,18 @@ export const latencyTrends = async (_req: Request, res: Response) => {
   }
 };
 
-export const anomalies = async (_req: Request, res: Response) => {
+export const anomalies = async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).user?.id || (req as any).user?.userId;
+    const filter = {
+      OR: [
+        { workspace: { userId } },
+        { conversation: { userId } }
+      ]
+    };
+
     const logs = await prisma.inferenceLog.findMany({
+      where: filter,
       orderBy: { timestamp: 'desc' },
       take: 100,
     });

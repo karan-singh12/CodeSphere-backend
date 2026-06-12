@@ -105,7 +105,7 @@ export const generateCodeStream = async (req: Request, res: Response) => {
   const userId = authUser?.userId;
   if (!userId) return apiRes.unauthorizedResponse(res, "Unauthorized");
 
-  const { workspaceId, messages, fileData } = req.body;
+  const { workspaceId, messages, fileData, template } = req.body;
 
   if (!messages || !messages.length) {
     return apiRes.errorResponse(res, "No messages provided", 400);
@@ -120,7 +120,7 @@ export const generateCodeStream = async (req: Request, res: Response) => {
 
   try {
     await workspacesService.generateCodeStream(
-      { userId, workspaceId, messages, fileData },
+      { userId, workspaceId, messages, fileData, template },
       res
     );
   } catch (error) {
