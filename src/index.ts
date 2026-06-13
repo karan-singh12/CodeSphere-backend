@@ -2,7 +2,7 @@ import app from "./app";
 import prisma from "./config/prisma";
 import { log } from "./utils/logger";
 
-const PORT = process.env.API_PORT || 3000;
+const PORT = process.env.PORT || process.env.API_PORT || 3000;
 
 async function startServer() {
   try {
