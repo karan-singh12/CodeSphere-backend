@@ -46,6 +46,13 @@ app.use("/public", express.static("public"));
 app.use(morgan("dev"));
 app.use(apiLoggerMiddleware);
 
+// Health check routes
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
+});
+app.get("/", (req, res) => {
+  res.status(200).json({ status: "OK", message: "CodeSphere API is running" });
+});
 
 // API routes
 app.use("/api", routes);
