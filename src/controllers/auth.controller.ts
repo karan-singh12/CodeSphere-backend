@@ -43,7 +43,23 @@ export const getProfile = async (req: Request, res: Response) => {
 
     if (!user) return apiRes.notFoundResponse(res, 'User not found');
 
-    return apiRes.successResponse(res, 'Profile retrieved', user);
+    const tokenSum = await prisma.inferenceLog.aggregate({
+      where: {
+        OR: [
+          { workspace: { userId: user.id } },
+          { conversation: { userId: user.id } }
+        ]
+      },
+      _sum: {
+        totalTokens: true
+      }
+    });
+    const tokenUsage = tokenSum._sum.totalTokens || 0;
+
+    return apiRes.successResponse(res, 'Profile retrieved', {
+      ...user,
+      tokenUsage
+    });
   } catch (error: unknown) {
     return apiRes.errorResponse(res, error instanceof Error ? error.message : 'Failed to retrieve profile', 400);
   }

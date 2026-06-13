@@ -12,6 +12,7 @@ export interface AuthPayload {
     imageUrl: string;
     credits: number;
     plan: string;
+    tokenUsage: number;
   };
 }
 
@@ -42,6 +43,7 @@ export class AuthService {
         imageUrl: user.imageUrl,
         credits: user.credits,
         plan: user.plan,
+        tokenUsage: 0,
       },
     };
   }
@@ -59,6 +61,20 @@ export class AuthService {
     }
 
     const token = TokenService.generateAccessToken(user.id, JWT_SECRET, JWT_EXPIRES_IN, user.email).token;
+
+    const tokenSum = await prisma.inferenceLog.aggregate({
+      where: {
+        OR: [
+          { workspace: { userId: user.id } },
+          { conversation: { userId: user.id } }
+        ]
+      },
+      _sum: {
+        totalTokens: true
+      }
+    });
+    const tokenUsage = tokenSum._sum.totalTokens || 0;
+
     return {
       token,
       user: {
@@ -68,6 +84,7 @@ export class AuthService {
         imageUrl: user.imageUrl,
         credits: user.credits,
         plan: user.plan,
+        tokenUsage,
       },
     };
   }

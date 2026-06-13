@@ -8,6 +8,12 @@ import { Message, FileData } from "../types/workspace";
 const CREDIT_COST_PER_GENERATION = 1;
 const MIN_CREDITS_TO_GENERATE = 1;
 
+const PLAN_TOKEN_LIMITS: Record<string, number> = {
+  free: 100000,
+  starter: 500000,
+  pro: 2000000,
+};
+
 // Dynamic imports for ESM modules in CommonJS backend
 let GoogleGenAIClass: any = null;
 let AgentClass: any = null;
@@ -485,7 +491,7 @@ export const generateCodeStream = async (
   // Verify user and credits
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, credits: true },
+    select: { id: true, credits: true, plan: true },
   });
 
   if (!user) {
@@ -499,6 +505,30 @@ export const generateCodeStream = async (
     res.end();
     return;
   }
+
+  // Verify token usage limit (Temporarily bypassed)
+  /*
+  const tokenSum = await prisma.inferenceLog.aggregate({
+    where: {
+      OR: [
+        { workspace: { userId } },
+        { conversation: { userId } }
+      ]
+    },
+    _sum: {
+      totalTokens: true
+    }
+  });
+  const totalTokensUsed = tokenSum._sum.totalTokens || 0;
+  const userPlan = user.plan || "free";
+  const tokenLimit = PLAN_TOKEN_LIMITS[userPlan] || PLAN_TOKEN_LIMITS.free;
+
+  if (totalTokensUsed >= tokenLimit) {
+    res.write(sseEvent("error", { message: "Token usage limit exceeded. Please upgrade your plan." }));
+    res.end();
+    return;
+  }
+  */
 
   const startTime = Date.now();
   let accumulated = "";
@@ -652,20 +682,24 @@ export const generateCodeStream = async (
     const latency = Math.max(0, Date.now() - startTime);
 
     if (workspaceId) {
-      await prisma.inferenceLog.create({
-        data: {
-          workspaceId,
-          provider: "gemini",
-          model: "gemini-3.5-flash",
-          latency,
-          promptTokens: 0,
-          completionTokens: 0,
-          totalTokens: 0,
-          status: "error",
-          inputPreview: redactPII(messages[messages.length - 1]?.content ?? "").slice(0, 1000),
-          errorMessage: err.message || "Unknown error",
-        },
-      });
+      try {
+        await prisma.inferenceLog.create({
+          data: {
+            workspaceId,
+            provider: "gemini",
+            model: "gemini-3.5-flash",
+            latency,
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            status: "error",
+            inputPreview: redactPII(messages[messages.length - 1]?.content ?? "").slice(0, 1000),
+            errorMessage: err.message || "Unknown error",
+          },
+        });
+      } catch (logErr) {
+        console.error("Failed to write inference error log to database:", logErr);
+      }
     }
 
     res.write(sseEvent("error", { message: err.message || "Something went wrong." }));
@@ -710,6 +744,30 @@ export const improveCodeStream = async (
     res.end();
     return;
   }
+
+  // Verify token usage limit (Temporarily bypassed)
+  /*
+  const tokenSum = await prisma.inferenceLog.aggregate({
+    where: {
+      OR: [
+        { workspace: { userId } },
+        { conversation: { userId } }
+      ]
+    },
+    _sum: {
+      totalTokens: true
+    }
+  });
+  const totalTokensUsed = tokenSum._sum.totalTokens || 0;
+  const userPlan = user.plan || "free";
+  const tokenLimit = PLAN_TOKEN_LIMITS[userPlan] || PLAN_TOKEN_LIMITS.free;
+
+  if (totalTokensUsed >= tokenLimit) {
+    res.write(sseEvent("error", { message: "Token usage limit exceeded. Please upgrade your plan." }));
+    res.end();
+    return;
+  }
+  */
 
   const startTime = Date.now();
   const patchedFiles = { ...fileData.files };
@@ -846,20 +904,24 @@ export const improveCodeStream = async (
     console.error("[improve] error:", err);
     const latency = Math.max(0, Date.now() - startTime);
 
-    await prisma.inferenceLog.create({
-      data: {
-        workspaceId,
-        provider: "gemini",
-        model: "gemini-3.5-flash",
-        latency,
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-        status: "error",
-        inputPreview: redactPII(userRequest).slice(0, 1000),
-        errorMessage: err.message || "Unknown error",
-      },
-    });
+    try {
+      await prisma.inferenceLog.create({
+        data: {
+          workspaceId,
+          provider: "gemini",
+          model: "gemini-3.5-flash",
+          latency,
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          status: "error",
+          inputPreview: redactPII(userRequest).slice(0, 1000),
+          errorMessage: err.message || "Unknown error",
+        },
+      });
+    } catch (logErr) {
+      console.error("Failed to write inference error log to database:", logErr);
+    }
 
     res.write(sseEvent("error", { message: err.message || "Something went wrong." }));
     res.end();
