@@ -24,6 +24,11 @@ function buildDatabaseUrl(url: string) {
       params.set('sslmode', 'require');
     }
 
+    if (!params.has('connection_limit')) {
+      const limit = params.get('pgbouncer') === 'true' ? '10' : '20';
+      params.set('connection_limit', limit);
+    }
+
     parsed.search = params.toString();
     return parsed.toString();
   } catch (error) {
