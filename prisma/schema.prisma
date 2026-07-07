@@ -23,15 +23,16 @@ model User {
 }
 
 model Workspace {
-  id        String         @id @default(cuid())
-  title     String?
-  userId    String
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  Json           @default("[]")
-  fileData  Json?
-  logs      InferenceLog[]
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  title         String?
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages      Json           @default("[]")
+  fileData      Json?
+  logs          InferenceLog[]
+  codeSnippets  CodeSnippet[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@index([userId])
 }
@@ -78,3 +79,16 @@ model InferenceLog {
   timestamp        DateTime      @default(now())
 }
 
+// RAG pipeline: stores file embeddings for semantic retrieval
+model CodeSnippet {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  filePath    String    // e.g. "/App.js" or "/src/components/Nav.jsx"
+  content     String    // raw code content (truncated to 4000 chars)
+  embedding   Json      // float[] stored as JSON — 768-dim Gemini text-embedding-004
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId])
+}

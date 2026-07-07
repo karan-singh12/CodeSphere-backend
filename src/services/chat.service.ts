@@ -1,6 +1,7 @@
 import prisma from '../config/prisma';
 import { createProvider, ProviderKey } from '../sdk/providerFactory';
 import { LLMWrapper } from '../sdk/llmWrapper';
+import { ModelRouter } from '../sdk/modelRouter';
 
 export const sendMessage = async (conversationId: string, prompt: string) => {
   const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
@@ -16,11 +17,16 @@ export const sendMessage = async (conversationId: string, prompt: string) => {
     },
   });
 
-  const providerKey = (conversation.provider as ProviderKey) ?? 'gemini';
+  // Intelligent routing: pick the optimal provider + model for this prompt
+  const routingDecision = ModelRouter.routeForChat(prompt);
+  const providerKey = (routingDecision.provider as ProviderKey) ?? (conversation.provider as ProviderKey) ?? 'gemini';
   const provider = createProvider(providerKey);
   const wrapper = new LLMWrapper({ provider });
 
-  const responseText = await wrapper.generate(conversationId, prompt, { model: conversation.model });
+  const responseText = await wrapper.generate(conversationId, prompt, {
+    model: routingDecision.model,
+  });
+
   const assistantMessage = await prisma.message.create({
     data: {
       conversationId,

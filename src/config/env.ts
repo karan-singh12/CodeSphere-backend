@@ -16,4 +16,6 @@ export const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
 export const GEMINI_API_BASE_URL = process.env.GEMINI_API_BASE_URL ?? 'https://generativelanguage.googleapis.com';
 export const GROQ_API_KEY = process.env.GROQ_API_KEY ?? '';
 export const GROQ_API_BASE_URL = process.env.GROQ_API_BASE_URL ?? 'https://api.groq.com';
+export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
+export const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? '';
 export const NODE_ENV = process.env.NODE_ENV ?? 'development';

@@ -4,14 +4,16 @@ import { GeminiProvider } from './providers/gemini.provider';
 import { ClaudeProvider } from './providers/claude.provider';
 import { GroqProvider } from './providers/groq.provider';
 import { MockProvider } from './providers/mock.provider';
+import { OpenRouterProvider } from './providers/openrouter.provider';
 
-export type ProviderKey = 'openai' | 'gemini' | 'claude' | 'groq' | 'mock';
+export type ProviderKey = 'openai' | 'gemini' | 'claude' | 'groq' | 'openrouter' | 'mock';
 
 export const providerRegistry: Record<ProviderKey, new () => LLMProvider> = {
   openai: OpenAIProvider,
   gemini: GeminiProvider,
   claude: ClaudeProvider,
   groq: GroqProvider,
+  openrouter: OpenRouterProvider,
   mock: MockProvider,
 };
 
@@ -22,3 +24,4 @@ export const createProvider = (provider: ProviderKey): LLMProvider => {
   }
   return new providerCtor();
 };
+

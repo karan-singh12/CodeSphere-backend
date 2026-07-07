@@ -3,6 +3,9 @@ import { z } from "zod";
 import prisma from "../config/prisma";
 import { redactPII } from "../utils/redactPII";
 import { Message, FileData } from "../types/workspace";
+import { AgentOrchestrator } from "../sdk/agentOrchestrator";
+import { PromptEnhancer } from "./promptEnhancer.service";
+import { RagRetrievalService } from "./ragRetrieval.service";
 
 
 const CREDIT_COST_PER_GENERATION = 1;
@@ -537,12 +540,36 @@ export const generateCodeStream = async (
   let completionTokens = 0;
   let totalTokens = 0;
 
+  // ── Agent Orchestration ─────────────────────────────────────────────────────────
+  const lastUserContent = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+  const orchestratorDecision = AgentOrchestrator.decide(lastUserContent, fileData);
+  const selectedModel = orchestratorDecision.model;
+
+  // ── Prompt Enhancement (Stage 0-4, including RAG retrieval) ──────────────────
+  const enhancement = await PromptEnhancer.enhanceWithRag(
+    lastUserContent,
+    fileData,
+    resolvedTemplate,
+    workspaceId ?? undefined
+  );
+
   try {
-    const contents = buildContents(messages, fileData);
+    // Emit orchestration decision as SSE status
+    res.write(sseEvent("status", {
+      message: `[${orchestratorDecision.agentMode}] Routing to ${selectedModel} — ${orchestratorDecision.taskType} (complexity ${orchestratorDecision.complexityScore})…`
+    }));
+
+    // Build conversation contents using the RAG-enhanced last user message
+    const enhancedMessages: Message[] = messages.map((m, idx) =>
+      idx === messages.length - 1 && m.role === "user"
+        ? { ...m, content: enhancement.enhancedPrompt }
+        : m
+    );
+    const contents = buildContents(enhancedMessages, fileData);
 
     const ai = new GoogleGenAIClass({ apiKey: process.env.GEMINI_API_KEY! });
     const geminiStream = await ai.models.generateContentStream({
-      model: "gemini-3.5-flash",
+      model: selectedModel,
       contents,
       config: {
         systemInstruction: getSystemPrompt(resolvedTemplate),
@@ -653,20 +680,28 @@ export const generateCodeStream = async (
     const latency = Math.max(0, Date.now() - startTime);
 
     // Write observational log for this user prompt generation
+    const orchestratorMeta = `[${orchestratorDecision.agentMode}|router:${selectedModel}|task:${orchestratorDecision.taskType}|score:${orchestratorDecision.complexityScore}|intent:${enhancement.intent}|enhancements:${enhancement.enhancementNotes.join(',')}]`;
     await prisma.inferenceLog.create({
       data: {
         workspaceId: dbWorkspace.id,
         provider: "gemini",
-        model: "gemini-3.5-flash",
+        model: selectedModel,
         latency,
         promptTokens: promptTokens || Math.ceil(JSON.stringify(contents).length / 4),
         completionTokens: completionTokens || Math.ceil(accumulated.length / 4),
         totalTokens: totalTokens || Math.ceil((JSON.stringify(contents).length + accumulated.length) / 4),
         status: "success",
-        inputPreview: redactPII(lastUserMessage.content).slice(0, 1000),
+        inputPreview: `${orchestratorMeta} ${redactPII(lastUserMessage.content)}`.slice(0, 1000),
         outputPreview: redactPII(assistantMessage).slice(0, 1000),
       },
     });
+
+    // ── RAG Indexing (fire-and-forget, non-blocking) ───────────────────────────
+    // Index the generated files so future prompts on this workspace
+    // can retrieve relevant code snippets via semantic search.
+    RagRetrievalService.indexWorkspaceFiles(dbWorkspace.id, newFileData.files).catch(
+      (err) => console.error('[RAG] Background indexing error (non-fatal):', err?.message)
+    );
 
     res.write(
       sseEvent("done", {
@@ -687,7 +722,7 @@ export const generateCodeStream = async (
           data: {
             workspaceId,
             provider: "gemini",
-            model: "gemini-3.5-flash",
+            model: selectedModel,
             latency,
             promptTokens: 0,
             completionTokens: 0,
@@ -776,6 +811,15 @@ export const improveCodeStream = async (
 
   const template = fileData.template || "react";
 
+  // ── Prompt Enhancement for agent improve flow (with RAG) ───────────────────
+  const agentEnhancement = await PromptEnhancer.enhanceWithRag(
+    userRequest,
+    fileData,
+    template,
+    workspaceId
+  );
+  const enhancedUserRequest = agentEnhancement.enhancedPrompt;
+
   const updateFileTool = createToolFn({
     name: "update_file",
     description: `Update or rewrite a file in the ${template} sandbox. Call once per file you need to change.`,
@@ -839,8 +883,10 @@ export const improveCodeStream = async (
   });
 
   try {
-    res.write(sseEvent("status", { message: "Cline agent starting…" }));
-    const result = await agent.run(userRequest);
+    res.write(sseEvent("status", {
+      message: `Cline agent starting (intent: ${agentEnhancement.intent})…`
+    }));
+    const result = await agent.run(enhancedUserRequest);
 
     if (result.status === "failed") {
       throw new Error(result.error?.message ?? "Agent run failed");
@@ -877,6 +923,7 @@ export const improveCodeStream = async (
     const totalTokens = promptTokens + completionTokens;
 
     // Log the Agent usage observably!
+    const agentMeta = `[agent|intent:${agentEnhancement.intent}|enhancements:${agentEnhancement.enhancementNotes.join(',')}]`;
     await prisma.inferenceLog.create({
       data: {
         workspaceId,
@@ -887,7 +934,7 @@ export const improveCodeStream = async (
         completionTokens,
         totalTokens,
         status: "success",
-        inputPreview: redactPII(userRequest).slice(0, 1000),
+        inputPreview: `${agentMeta} ${redactPII(userRequest)}`.slice(0, 1000),
         outputPreview: redactPII(finalSummary || result.outputText || "").slice(0, 1000),
       },
     });
